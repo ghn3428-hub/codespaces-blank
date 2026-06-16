@@ -1,24 +1,25 @@
 const express = require("express");
 const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(express.json());
 
+// 🔥 HTML 파일 연결
+app.use(express.static(__dirname));
+
 let memories = [];
 
-// 데이터 불러오기
 if (fs.existsSync("data.json")) {
   memories = JSON.parse(fs.readFileSync("data.json"));
 }
 
-// 저장 API
 app.post("/add", (req, res) => {
   memories.push(req.body.text);
   fs.writeFileSync("data.json", JSON.stringify(memories));
   res.send({ success: true });
 });
 
-// 조회 API
 app.get("/list", (req, res) => {
   res.send(memories);
 });
