@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>예원이 ♥ 민중이의 루미큐브</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Nanum Gothic', sans-serif;
+            background-color: #1e1e2f;
+            user-select: none;
+        }
+        .fancy-font {
+            font-family: 'Jua', sans-serif;
+        }
+        /* 타일 스타일링 */
+        .tile {
+            aspect-ratio: 3 / 4;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .tile:active {
+            transform: scale(1.05) rotate(2deg);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+        /* 드래그 상태 */
+        .dragging {
+            opacity: 0.5;
+            transform: scale(1.1);
+        }
+        /* 스크롤바 커스텀 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #2d2d44;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4f46e5;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6366f1;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-100 flex flex-col justify-between overflow-x-hidden">
+
+    <!-- 상단 헤더 및 스코어보드 -->
+    <header class="bg-gray-900/95 border-b border-gray-800 p-4 shadow-md sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-indigo-600 p-2 rounded-xl text-white text-xl animate-bounce">
+                    🧩
+                </div>
+                <div>
+                    <h1 class="text-2xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-pink-500 to-indigo-400 fancy-font">
+                        예원이와 민중이의 루미큐브
+                    </h1>
+                    <p class="text-xs text-gray-400">타일을 먼저 모두 없애는 사람이 승리합니다!</p>
+                </div>
+            </div>
+
+            <!-- 현재 차례 정보 -->
+            <div class="flex items-center gap-4 bg-gray-800/80 px-6 py-2.5 rounded-2xl border border-gray-700">
+                <div class="text-right">
+                    <span class="text-xs text-gray-400 block uppercase font-bold tracking-widest">CURRENT TURN</span>
+                    <span id="current-player-display" class="text-lg font-black text-yellow-400 fancy-font">예원이 (Player 1)</span>
+                </div>
+                <div class="h-8 w-0.5 bg-gray-700"></div>
+                <div>
+                    <span class="text-xs text-gray-400 block font-bold">남은 타일 더미</span>
+                    <span id="pool-count" class="text-lg font-black text-indigo-400 font-mono">106</span>
+                </div>
+            </div>
+
+            <!-- 플레이어 현황 퀵 스코어 -->
+            <div class="flex gap-2">
+                <div id="p1-badge" class="bg-red-500/20 border-2 border-red-500/80 px-4 py-1.5 rounded-xl flex items-center gap-2">
+                    <span class="text-sm font-bold">👩 예원이:</span>
+                    <span id="p1-tile-count" class="font-black text-red-400">14장</span>
+                </div>
+                <div id="p2-badge" class="bg-blue-500/10 border border-transparent px-4 py-1.5 rounded-xl flex items-center gap-2">
+                    <span class="text-sm font-bold">🧑 민중이:</span>
+                    <span id="p2-tile-count" class="font-black text-blue-400">14장</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 메인 게임 영역 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 flex flex-col gap-4">
+        
+        <!-- 알림판 / 에러 메시지 팝업 공간 -->
+        <div id="alert-box" class="hidden bg-red-600/90 text-white px-6 py-3.5 rounded-xl flex items-center justify-between shadow-lg border border-red-500 animate-pulse transition-all">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-xl"></i>
+                <span id="alert-message" class="font-semibold text-sm">오류 메시지</span>
+            </div>
+            <button onclick="closeAlert()" class="text-white/80 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <!-- 팁 가이드라인 -->
+        <div class="bg-gray-800/40 border border-gray-700/60 p-3 rounded-xl flex items-center gap-3 text-xs text-gray-300">
+            <span class="bg-yellow-500 text-gray-900 px-2 py-0.5 rounded font-black">TIP</span>
+            <p>보드 위의 세트들을 자유롭게 나누거나 결합할 수 있습니다. <b>턴을 완료할 때 모든 세트가 규칙(3개 이상 런 또는 그룹)을 만족해야 합니다.</b></p>
+        </div>
+
+        <!-- 공용 게임 보드 (상단 타일 드롭 존) -->
+        <div class="bg-gray-900/60 border-2 border-dashed border-gray-700/80 rounded-3xl p-6 min-h-[350px] relative flex flex-col justify-between shadow-inner">
+            <div class="absolute top-4 left-4 bg-gray-800/80 px-3 py-1 rounded-full border border-gray-700 text-xs text-gray-400 font-bold z-10 shadow-sm">
+                📌 공용 보드 (BOARD)
+            </div>
+            
+            <div class="absolute top-4 right-4 flex gap-2 z-10">
+                <button onclick="resetBoardToTurnStart()" class="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all">
+                    <i class="fa-solid fa-rotate-left"></i> 보드 원래대로 (Reset)
+                </button>
+                <button onclick="createNewSetOnBoard()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-bold shadow-lg shadow-indigo-600/20 transition-all">
+                    <i class="fa-solid fa-plus"></i> 새 세트 추가
+                </button>
+            </div>
+
+            <!-- 타일 세트 그룹들이 나열되는 그리드 컨테이너 -->
+            <div id="board-container" class="mt-8 flex-1 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-2 overflow-y-auto max-h-[480px]">
+                <!-- 세트(Row)들이 동적으로 삽입됨 -->
+            </div>
+            
+            <!-- 보드가 비어있을 때 표출될 플레이스홀더 -->
+            <div id="board-empty-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-gray-500 pointer-events-none p-4">
+                <span class="text-5xl mb-2">🧩</span>
+                <p class="font-bold text-sm">보드가 비어있습니다.</p>
+                <p class="text-xs text-gray-600 mt-1">내 랙에서 아래 '새 세트 추가' 버튼 또는 빈 세트 구역으로 타일을 드래그하여 배치를 시작하세요!</p>
+            </div>
+        </div>
+
+        <!-- 턴 컨트롤 액션바 -->
+        <div class="flex flex-col sm:flex-row justify-between items-center gap-3 bg-gray-900/40 p-3 rounded-2xl border border-gray-800">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-gray-400">등록 상태:</span>
+                <span id="initial-status-badge" class="text-xs px-3 py-1 rounded-full font-bold bg-red-500/10 text-red-400 border border-red-500/20">
+                    등록 필요 (합계 30 이상 필수)
+                </span>
+            </div>
+            
+            <div class="flex flex-wrap gap-2 w-full sm:w-auto justify-end">
+                <!-- 타일 먹기 버튼 -->
+                <button onclick="drawTileFromPool()" class="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold px-5 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/10 transition-all">
+                    <i class="fa-solid fa-plus-square text-lg"></i> 타일 가져오기 (패스)
+                </button>
+                <!-- 턴 완료 버튼 -->
+                <button onclick="submitTurn()" class="flex-1 sm:flex-initial bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 active:scale-95 text-white font-black px-8 py-2.5 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/30 transition-all text-base">
+                    <i class="fa-solid fa-circle-check text-lg"></i> 턴 완료! (Submit)
+                </button>
+            </div>
+        </div>
+
+        <!-- 플레이어 거치대 (RACK) -->
+        <div class="bg-gray-900/90 border-2 border-indigo-500/40 rounded-3xl p-6 shadow-2xl relative">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
+                <div class="flex items-center gap-2.5">
+                    <span class="bg-indigo-600 text-white font-black text-xs px-3 py-1 rounded-full shadow">RACK</span>
+                    <h2 class="text-lg font-black text-gray-200 fancy-font">
+                        <span id="rack-owner-name">예원이</span>의 타일 거치대
+                    </h2>
+                    <!-- 보이기 / 숨기기 토글 버튼 (상대방 카드 보지 못하게 차폐) -->
+                    <button onclick="toggleRackVisibility()" id="btn-toggle-rack" class="bg-gray-800 hover:bg-gray-700 text-xs px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 flex items-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-eye-slash"></i> 패 가리기
+                    </button>
+                </div>
+
+                <!-- 정렬 옵션들 -->
+                <div id="rack-sorting-controls" class="flex gap-1.5 w-full sm:w-auto">
+                    <button onclick="sortRack('group')" class="flex-1 sm:flex-none bg-gray-800 hover:bg-gray-700 active:scale-95 text-xs px-3 py-2 rounded-lg text-gray-300 font-semibold border border-gray-700 transition-all">
+                        🎨 색상별 정렬 (1-2-3)
+                    </button>
+                    <button onclick="sortRack('num')" class="flex-1 sm:flex-none bg-gray-800 hover:bg-gray-700 active:scale-95 text-xs px-3 py-2 rounded-lg text-gray-300 font-semibold border border-gray-700 transition-all">
+                        🔢 숫자별 정렬 (7-7-7)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 타일이 들어찰 가상의 슬롯 랙 -->
+            <div class="bg-gray-950/70 rounded-2xl p-4 min-h-[140px] border border-gray-800 shadow-inner">
+                <div id="rack-container" class="flex flex-wrap gap-2.5 items-center justify-center md:justify-start">
+                    <!-- 플레이어 타일들이 동적으로 렌더링됨 -->
+                </div>
+
+                <!-- 패가 가려진 상태일 때의 보호 마스크 -->
+                <div id="rack-hidden-overlay" class="hidden absolute inset-0 bg-gray-950/98 rounded-3xl flex flex-col items-center justify-center p-6 text-center z-20">
+                    <div class="w-16 h-16 bg-indigo-600/10 text-indigo-400 rounded-full flex items-center justify-center text-3xl mb-3 border border-indigo-500/30">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <p class="font-extrabold text-lg text-white mb-1">상대방의 턴입니다!</p>
+                    <p class="text-xs text-gray-400 mb-4">화면을 넘겨받고 아래 버튼을 눌러 카드를 확인해 주세요.</p>
+                    <button onclick="toggleRackVisibility()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm px-6 py-2.5 rounded-xl shadow-lg shadow-indigo-600/30 active:scale-95 transition-all">
+                        👁️ 내 카드 확인하기
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 푸터 정보 -->
+    <footer class="bg-gray-950 border-t border-gray-900 py-4 px-6 text-center text-xs text-gray-500 mt-8">
+        <p>© 2026 예원이 ♥ 민중이 루미큐브 프로젝트. All rights reserved.</p>
+    </footer>
+
+    <!-- 게임 시작 환영 모달 -->
+    <div id="welcome-modal" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-900 border-4 border-indigo-600 rounded-3xl max-w-lg w-full p-8 shadow-2xl relative text-center">
+            <div class="text-6xl mb-4 animate-bounce">⚔️</div>
+            <h2 class="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-pink-500 mb-2 fancy-font">
+                루미큐브 대격돌!
+            </h2>
+            <p class="text-sm text-indigo-400 font-bold mb-6">예원이 VS 민중이, 민중이 VS 예원이</p>
+
+            <div class="bg-gray-800/80 p-5 rounded-2xl text-left text-xs text-gray-300 space-y-3 border border-gray-700/60 mb-6">
+                <h4 class="font-bold text-yellow-400 text-sm border-b border-gray-700 pb-1.5"><i class="fa-solid fa-circle-info"></i> 게임 핵심 규칙 안내</h4>
+                <p>1. <b>첫 등록(Initial Meld)</b>: 보드에 타일을 처음 올릴 때는 <b>반드시 본인 패에서만</b> 이루어져야 하며, 내려놓는 타일 세트의 숫자들의 총합이 <b>30 이상</b>이어야 등록에 성공합니다. (등록 시 조커 사용 가능)</p>
+                <p>2. <b>세트 구성</b>:
+                    <br>&nbsp;&bull; <b>런(Run)</b>: 같은 색상의 연속된 숫자 3개 이상 (예: <span class="text-red-500 font-bold">빨간 3, 4, 5</span>)
+                    <br>&nbsp;&bull; <b>그룹(Group)</b>: 다른 색상의 동일한 숫자 3개 또는 4개 (예: <span class="text-red-500 font-bold">빨간 8</span>, <span class="text-blue-500 font-bold">파란 8</span>, <span class="text-yellow-500 font-bold">노란 8</span>)
+                </p>
+                <p>3. <b>조합하기</b>: 등록을 마친 후에는 보드에 올려진 다른 세트들을 쪼개거나 덧붙여 나만의 조합을 맞출 수 있습니다.</p>
+                <p>4. <b>벌칙</b>: 만약 턴 종료 조건에 맞추지 못해 'Reset' 하거나 타일을 보드에서 회수하지 못할 경우, <b>벌칙 타일 1장</b>을 먹게 됩니다.</p>
+            </div>
+
+            <button onclick="startGame()" class="w-full py-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-extrabold text-xl rounded-2xl shadow-lg active:scale-95 transition-all">
+                게임 시작하기! 🎮
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 오버 축하 모달 -->
+    <div id="gameover-modal" class="hidden fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+        <div class="bg-gray-900 border-4 border-yellow-400 rounded-3xl max-w-md w-full p-8 text-center shadow-2xl relative">
+            <!-- 트로피 아이콘 -->
+            <div class="w-24 h-24 bg-yellow-500/10 text-yellow-400 rounded-full flex items-center justify-center text-5xl mx-auto mb-4 border-2 border-yellow-400 animate-pulse">
+                👑
+            </div>
+            
+            <h2 class="text-4xl font-black text-yellow-400 mb-1 fancy-font">VICTORY!</h2>
+            <p id="winner-name-display" class="text-2xl font-bold text-white mb-6">예원이 승리!</p>
+
+            <div class="bg-gray-800 p-4 rounded-xl mb-6 border border-gray-700 text-left space-y-2">
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">최종 타일 수:</span>
+                    <span class="font-bold text-green-400">0장 (소진 완료)</span>
+                </div>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-400">상대 남은 타일 수:</span>
+                    <span id="loser-tiles-left" class="font-bold text-red-400">12장</span>
+                </div>
+            </div>
+
+            <button onclick="window.location.reload()" class="w-full py-3.5 bg-yellow-500 hover:bg-yellow-400 text-gray-950 font-extrabold text-lg rounded-xl shadow-lg active:scale-95 transition-all">
+                새 게임 시작하기 🔄
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 시스템 스크립트 -->
+    <script>
+        // 타일 색상 스키마 정의
+        const COLORS = {
+            red: { text: 'text-red-500', bg: 'bg-red-500', hex: '#ef4444' },
+            blue: { text: 'text-blue-500', bg: 'bg-blue-500', hex: '#3b82f6' },
+            yellow: { text: 'text-yellow-500', bg: 'bg-yellow-500', hex: '#f59e0b' },
+            black: { text: 'text-gray-900', bg: 'bg-gray-900', hex: '#111827' }
+        };
+
+        const COLOR_KEYS = ['red', 'blue', 'yellow', 'black'];
+
+        // 게임 상태 저장 구조
+        let game = {
+            pool: [], // 타일 더미 전체 (106장)
+            players: {
+                p1: { name: '예원이', rack: [], hasMeld: false },
+                p2: { name: '민중이', rack: [], hasMeld: false }
+            },
+            currentTurn: 'p1', // 'p1' 또는 'p2'
+            board: [], // 보드 위의 세트들 (각 세트는 타일 객체들의 배열)
+            
+            // 턴이 시작될 때 롤백을 위해 상태 스냅샷 저장
+            turnStartSnapshot: null,
+            rackHidden: true, // 턴 시작 시 패 가리기 기본값
+            draggedTile: null, // 현재 드래그 중인 타일 참조 데이터
+            sourceType: null, // 드래그 시작 지점 ('rack' 또는 'board')
+            sourceSetIndex: null, // 보드에서 드래그 시작했을 때 몇 번째 세트인지
+            sourceTileIndex: null // 드래그 시작한 타일의 세트 내 인덱스
+        };
+
+        // 타일 유니크 아이디 발급기
+        let tileIdCounter = 0;
+
+        // 1. 타일 더미(Pool) 생성 및 섞기
+        function initTilePool() {
+            game.pool = [];
+            tileIdCounter = 0;
+
+            // 4개 색상 x 1~13 숫자 x 2세트
+            COLOR_KEYS.forEach(color => {
+                for (let num = 1; num <= 13; num++) {
+                    for (let i = 0; i < 2; i++) {
+                        game.pool.push({
+                            id: 'tile_' + (tileIdCounter++),
+                            type: 'normal',
+                            color: color,
+                            value: num
+                        });
+                    }
+                }
+            });
+
+            // 조кер 타일 2장 추가 (빨강 조кер, 검정 조кер)
+            game.pool.push({
+                id: 'tile_joker_black',
+                type: 'joker',
+                color: 'black',
+                value: 0 // 조커는 임의값 대입 가능
+            });
+            game.pool.push({
+                id: 'tile_joker_red',
+                type: 'joker',
+                color: 'red',
+                value: 0
+            });
+
+            // 피셔-예이츠 셔플 알고리즘으로 타일 뒤섞기
+            for (let i = game.pool.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [game.pool[i], game.pool[j]] = [game.pool[j], game.pool[i]];
+            }
+        }
+
+        // 2. 카드 나눠주기 (각자 14장씩 기본 배분)
+        function dealInitialTiles() {
+            game.players.p1.rack = [];
+            game.players.p2.rack = [];
+
+            for (let i = 0; i < 14; i++) {
+                game.players.p1.rack.push(game.pool.pop());
+                game.players.p2.rack.push(game.pool.pop());
+            }
+        }
+
+        // 3. 모달에서 게임 시작 버튼을 클릭했을 때 트리거
+        function startGame() {
+            document.getElementById('welcome-modal').classList.add('hidden');
+            initTilePool();
+            dealInitialTiles();
+            game.board = [];
+            game.currentTurn = 'p1';
+            game.rackHidden = true; // 비밀 보장 오버레이 가동
+
+            // 턴 시작 시점 스냅샷 복사
+            saveTurnStartSnapshot();
+            
+            renderAll();
+        }
+
+        // 상태 스냅샷 저장 (보드 롤백 대비)
+        function saveTurnStartSnapshot() {
+            game.turnStartSnapshot = {
+                board: JSON.parse(JSON.stringify(game.board)),
+                p1Rack: JSON.parse(JSON.stringify(game.players.p1.rack)),
+                p2Rack: JSON.parse(JSON.stringify(game.players.p2.rack)),
+                p1Meld: game.players.p1.hasMeld,
+                p2Meld: game.players.p2.hasMeld
+            };
+        }
+
+        // 원래 상태로 완벽 롤백
+        function resetBoardToTurnStart() {
+            if (!game.turnStartSnapshot) return;
+            
+            game.board = JSON.parse(JSON.stringify(game.turnStartSnapshot.board));
+            game.players.p1.rack = JSON.parse(JSON.stringify(game.turnStartSnapshot.p1Rack));
+            game.players.p2.rack = JSON.parse(JSON.stringify(game.turnStartSnapshot.p2Rack));
+            game.players.p1.hasMeld = game.turnStartSnapshot.p1Meld;
+            game.players.p2.hasMeld = game.turnStartSnapshot.p2Meld;
+
+            closeAlert();
+            renderAll();
+        }
+
+        // 보드에 완전히 빈 세트 한 줄 추가하기
+        function createNewSetOnBoard() {
+            game.board.push([]);
+            renderAll();
+            closeAlert();
+        }
+
+        // 4. 드로우 시스템 (타일을 먹고 턴 강제 패스)
+        function drawTileFromPool() {
+            if (game.pool.length === 0) {
+                showAlert("더 이상 가져올 수 있는 타일 더미가 없습니다!");
+                return;
+            }
+
+            // 만약 보드가 수정된 상태인데 타일을 가져가려고 하는 경우,
+            // 룰상 보드를 복구하고 패를 먹여야 합니다.
+            const isBoardModified = JSON.stringify(game.board) !== JSON.stringify(game.turnStartSnapshot.board);
+            if (isBoardModified) {
+                resetBoardToTurnStart();
+                showAlert("보드가 수정되어 원래대로 리셋하고 타일 1장을 지급했습니다.");
+            }
+
+            // 현재 플레이어 랙에 타일 1장 주입
+            const currentPlayer = game.players[game.currentTurn];
+            currentPlayer.rack.push(game.pool.pop());
+
+            // 턴 체인지
+            switchTurn();
+        }
+
+        // 5. 다음 차례로 변경 로직
+        function switchTurn() {
+            game.currentTurn = (game.currentTurn === 'p1') ? 'p2' : 'p1';
+            game.rackHidden = true; // 무조건 다음 사람 가림막 적용
+            
+            saveTurnStartSnapshot();
+            renderAll();
+            closeAlert();
+        }
+
+        // 패 보이기/가리기 가시성 전환
+        function toggleRackVisibility() {
+            game.rackHidden = !game.rackHidden;
+            const overlay = document.getElementById('rack-hidden-overlay');
+            const toggleBtn = document.getElementById('btn-toggle-rack');
+
+            if (game.rackHidden) {
+                overlay.classList.remove('hidden');
+                toggleBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 패 보이기`;
+            } else {
+                overlay.classList.add('hidden');
+                toggleBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 패 가리기`;
+            }
+        }
+
+        // 6. 타일 렌더링 파이프라인
+        function renderAll() {
+            renderHeaderAndInfo();
+            renderBoard();
+            renderRack();
+        }
+
+        function renderHeaderAndInfo() {
+            const curP = game.players[game.currentTurn];
+            
+            // 헤더 정보
+            document.getElementById('current-player-display').innerText = `${curP.name} (${game.currentTurn === 'p1' ? '예원이' : '민중이'} 턴)`;
+            document.getElementById('pool-count').innerText = game.pool.length;
+            
+            // 배지 수량
+            document.getElementById('p1-tile-count').innerText = `${game.players.p1.rack.length}장`;
+            document.getElementById('p2-tile-count').innerText = `${game.players.p2.rack.length}장`;
+
+            // 배지 하이라이팅 처리
+            const p1Badge = document.getElementById('p1-badge');
+            const p2Badge = document.getElementById('p2-badge');
+
+            if (game.currentTurn === 'p1') {
+                p1Badge.className = "bg-red-500/20 border-2 border-red-500/80 px-4 py-1.5 rounded-xl flex items-center gap-2";
+                p2Badge.className = "bg-gray-800/40 border border-transparent px-4 py-1.5 rounded-xl flex items-center gap-2";
+            } else {
+                p1Badge.className = "bg-gray-800/40 border border-transparent px-4 py-1.5 rounded-xl flex items-center gap-2";
+                p2Badge.className = "bg-blue-500/20 border-2 border-blue-500/80 px-4 py-1.5 rounded-xl flex items-center gap-2";
+            }
+
+            // 거치대 소유자 텍스트
+            document.getElementById('rack-owner-name').innerText = curP.name;
+
+            // 등록(Meld) 달성 여부 라벨 출력
+            const statusBadge = document.getElementById('initial-status-badge');
+            if (curP.hasMeld) {
+                statusBadge.innerText = "등록 완료 ✓ (자유 보드 조합 가능)";
+                statusBadge.className = "text-xs px-3 py-1 rounded-full font-bold bg-green-500/10 text-green-400 border border-green-500/20";
+            } else {
+                statusBadge.innerText = "미등록 (첫 등록 합계 30 이상 필수)";
+                statusBadge.className = "text-xs px-3 py-1 rounded-full font-bold bg-red-500/10 text-red-400 border border-red-500/20";
+            }
+
+            // 패 가림 상태 오버레이 처리
+            const overlay = document.getElementById('rack-hidden-overlay');
+            const toggleBtn = document.getElementById('btn-toggle-rack');
+            if (game.rackHidden) {
+                overlay.classList.remove('hidden');
+                toggleBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> 패 보이기`;
+            } else {
+                overlay.classList.add('hidden');
+                toggleBtn.innerHTML = `<i class="fa-solid fa-eye"></i> 패 가리기`;
+            }
+        }
+
+        // 보드에 있는 타일 세트 그리기
+        function renderBoard() {
+            const container = document.getElementById('board-container');
+            const emptyPlaceholder = document.getElementById('board-empty-placeholder');
+            container.innerHTML = '';
+
+            // 비어있는 세트 제거 (단, 완전히 빈 보드일 때 생성 유지용 빈 세트 1개는 허용)
+            game.board = game.board.filter((set, idx) => set.length > 0 || idx === game.board.length - 1);
+
+            if (game.board.length === 0 || (game.board.length === 1 && game.board[0].length === 0)) {
+                emptyPlaceholder.classList.remove('hidden');
+                if (game.board.length === 0) {
+                    game.board.push([]); // 최소 1개의 타겟 드롭존 유지
+                }
+            } else {
+                emptyPlaceholder.classList.add('hidden');
+            }
+
+            game.board.forEach((set, setIdx) => {
+                // 개별 세트 컨테이너 하우스
+                const setDiv = document.createElement('div');
+                setDiv.className = "bg-gray-800/50 border border-gray-700/60 p-3.5 rounded-2xl flex flex-wrap gap-1.5 min-h-[90px] relative transition-all duration-300 hover:border-indigo-500/30";
+                setDiv.dataset.setIndex = setIdx;
+
+                // 드래그 앤 드롭 목적지 이벤트 지정
+                setDiv.addEventListener('dragover', (e) => e.preventDefault());
+                setDiv.addEventListener('drop', (e) => handleDropOnSet(e, setIdx));
+
+                // 세트 내부에 타일 요소 생성
+                set.forEach((tile, tileIdx) => {
+                    const tileEl = createTileElement(tile, 'board', setIdx, tileIdx);
+                    setDiv.appendChild(tileEl);
+                });
+
+                // 타일을 완벽하게 빈 임의 세트의 끝방향으로도 놓기 편하도록 레이아웃 할당
+                container.appendChild(setDiv);
+            });
+        }
+
+        // 내 패 거치대 타일 렌더링
+        function renderRack() {
+            const container = document.getElementById('rack-container');
+            container.innerHTML = '';
+
+            const currentRack = game.players[game.currentTurn].rack;
+
+            if (currentRack.length === 0) {
+                container.innerHTML = `<p class="text-gray-500 text-sm font-bold animate-pulse">거치대에 타일이 없습니다. 축하합니다!</p>`;
+                return;
+            }
+
+            currentRack.forEach((tile, idx) => {
+                const tileEl = createTileElement(tile, 'rack', null, idx);
+                container.appendChild(tileEl);
+            });
+
+            // 거치대 영역 자체도 드롭 대상 지정 (보드에서 다시 패로 가져올 때 대응)
+            const rackBox = document.getElementById('rack-container').parentNode;
+            rackBox.addEventListener('dragover', (e) => e.preventDefault());
+            rackBox.addEventListener('drop', (e) => handleDropOnRack(e));
+        }
+
+        // 공용 타일 엘리먼트 생성기
+        function createTileElement(tile, source, setIdx = null, tileIdx = null) {
+            const div = document.createElement('div');
+            div.className = "tile w-10 sm:w-12 bg-white rounded-lg border-2 border-gray-300 shadow-md flex flex-col justify-between p-1 sm:p-1.5 cursor-grab active:cursor-grabbing text-center font-black relative overflow-hidden select-none";
+            div.draggable = true;
+
+            // 타입 분기 (일반 타일 vs 조кер 타일)
+            if (tile.type === 'joker') {
+                // 조커는 색상별 웃는 얼굴 아이콘 탑재
+                div.innerHTML = `
+                    <div class="text-[10px] text-gray-400 font-bold">JOKER</div>
+                    <div class="text-xl sm:text-2xl leading-none" style="color: ${COLORS[tile.color].hex};">☺</div>
+                    <div class="text-[10px] text-gray-400 font-bold text-right">J</div>
+                `;
+            } else {
+                const colInfo = COLORS[tile.color];
+                div.innerHTML = `
+                    <div class="text-left text-xs leading-none" style="color: ${colInfo.hex};">${tile.value}</div>
+                    <div class="text-lg sm:text-xl font-black leading-none" style="color: ${colInfo.hex};">${tile.value}</div>
+                    <div class="text-right text-xs leading-none" style="color: ${colInfo.hex};">${tile.value}</div>
+                `;
+            }
+
+            // 드래그 시작 이벤트 리스너 연동
+            div.addEventListener('dragstart', (e) => {
+                game.draggedTile = tile;
+                game.sourceType = source;
+                game.sourceSetIndex = setIdx;
+                game.sourceTileIndex = tileIdx;
+                div.classList.add('dragging');
+                
+                // 모바일 터치 피드백을 위해 햅틱 반응용 클래스 적용 가능
+            });
+
+            div.addEventListener('dragend', () => {
+                div.classList.remove('dragging');
+            });
+
+            return div;
+        }
+
+        // 7. 드래그 앤 드롭 실제 배치 처리 핸들러
+        function handleDropOnSet(e, targetSetIdx) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (!game.draggedTile) return;
+
+            const tile = game.draggedTile;
+            const source = game.sourceType;
+
+            // 1. 거치대(Rack) -> 보드(Board) 세트로 진입 시
+            if (source === 'rack') {
+                const currentRack = game.players[game.currentTurn].rack;
+                // 기존 거치대에서 슬라이스 삭제
+                currentRack.splice(game.sourceTileIndex, 1);
+                // 보드 세트에 주입
+                game.board[targetSetIdx].push(tile);
+            }
+            // 2. 보드(Board) 내 다른 세트로의 이동 시
+            else if (source === 'board') {
+                const originSetIdx = game.sourceSetIndex;
+                if (originSetIdx === targetSetIdx) return; // 동일 세트 이동 무시
+
+                // 원본 세트에서 추출 및 제거
+                game.board[originSetIdx].splice(game.sourceTileIndex, 1);
+                // 타겟 세트에 주입
+                game.board[targetSetIdx].push(tile);
+            }
+
+            // 상태 갱신 및 렌더링
+            game.draggedTile = null;
+            renderAll();
+        }
+
+        function handleDropOnRack(e) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            if (!game.draggedTile) return;
+
+            const tile = game.draggedTile;
+            const source = game.sourceType;
+
+            // 보드 위에 있던 타일을 다시 거치대(Rack)로 환원할 때 사용
+            if (source === 'board') {
+                // 턴 시작 스냅샷에 원래 존재했던 타일인지 추적
+                const wasInStartSnapshot = checkTileInTurnStartSnapshot(tile.id);
+                
+                if (!wasInStartSnapshot) {
+                    // 이번 턴에 자신이 보드에 올렸던 카드이므로 안전하게 거치대로 회수 허용
+                    game.board[game.sourceSetIndex].splice(game.sourceTileIndex, 1);
+                    game.players[game.currentTurn].rack.push(tile);
+                } else {
+                    // 예전 턴부터 이미 보드에 올라가 있던 고정 타일은 마음대로 거치대로 유치할 수 없습니다 (루미큐브 규칙!)
+                    showAlert("이미 보드에 영구 등록되었던 타일은 내 거치대로 가져올 수 없습니다!");
+                    return;
+                }
+            }
+
+            game.draggedTile = null;
+            renderAll();
+        }
+
+        // 스냅샷 원본 보드에 타일이 들어있었는지 확인
+        function checkTileInTurnStartSnapshot(tileId) {
+            if (!game.turnStartSnapshot) return false;
+            
+            // 보드 스냅샷의 전수 세트를 순회하여 대조
+            for (let set of game.turnStartSnapshot.board) {
+                if (set.some(t => t.id === tileId)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 8. 거치대(Rack) 자동 정렬 알고리즘
+        function sortRack(sortType) {
+            const currentRack = game.players[game.currentTurn].rack;
+
+            if (sortType === 'num') {
+                // 숫자별 정렬 (오름차순) -> 숫자가 같을 땐 색상 사전순
+                currentRack.sort((a, b) => {
+                    // 조커는 가장 마지막/우측으로 배정
+                    if (a.type === 'joker') return 1;
+                    if (b.type === 'joker') return -1;
+                    
+                    if (a.value !== b.value) {
+                        return a.value - b.value;
+                    }
+                    return a.color.localeCompare(b.color);
+                });
+            } else if (sortType === 'group') {
+                // 색상별 정렬 (빨 -> 파 -> 노 -> 검 순) -> 연속 숫자순
+                const colorOrder = { red: 1, blue: 2, yellow: 3, black: 4 };
+                currentRack.sort((a, b) => {
+                    if (a.type === 'joker') return 1;
+                    if (b.type === 'joker') return -1;
+
+                    if (a.color !== b.color) {
+                        return colorOrder[a.color] - colorOrder[b.color];
+                    }
+                    return a.value - b.value;
+                });
+            }
+
+            renderAll();
+        }
+
+        // 9. 루미큐브 유효성 체크 엔진 (핵심 핵심 구현체)
+        function submitTurn() {
+            closeAlert();
+
+            const currentPlayer = game.players[game.currentTurn];
+            const originalBoard = game.turnStartSnapshot.board;
+            const currentBoard = game.board;
+
+            // 이번 턴에 보드에 생긴 변화 감지
+            const isBoardChanged = JSON.stringify(originalBoard) !== JSON.stringify(currentBoard);
+
+            if (!isBoardChanged) {
+                showAlert("보드에 아무런 타일도 내지 않았습니다! 낼 타일이 없다면 '타일 가져오기'를 누르세요.");
+                return;
+            }
+
+            // 빈 세트 필터링 후 검증 진행
+            const activeSets = currentBoard.filter(set => set.length > 0);
+
+            // [규칙 1] 보드 상의 모든 활성 세트는 최소 3개 이상의 타일 세트 요건을 맞춰야 함
+            for (let i = 0; i < activeSets.length; i++) {
+                const set = activeSets[i];
+                if (set.length < 3) {
+                    showAlert(`보드 위에 부적합한 세트가 있습니다. (타일 개수 부족: 세트의 카드 수는 최소 3장 이상이어야 합니다!)`);
+                    return;
+                }
+
+                // 그룹(Group) 검증과 런(Run) 검증 통과 여부 확인
+                const isValidGroup = validateGroup(set);
+                const isValidRun = validateRun(set);
+
+                if (!isValidGroup && !isValidRun) {
+                    showAlert(`보드 위에 규칙에 어긋난 세트 조합이 있습니다. 알맞은 그룹(동일 숫자/다른 색상) 또는 런(연속 숫자/동일 색상)을 완성해 주세요!`);
+                    return;
+                }
+            }
+
+            // [규칙 2] 아직 첫 등록(Meld)을 안 마친 상태인 플레이어 검사
+            if (!currentPlayer.hasMeld) {
+                // 이번 턴에 플레이어가 내 패(Rack)에서 "직접 보드로 던져 넣은 타일들"을 구분해 내야 함
+                const originRackIds = new Set(game.turnStartSnapshot.p1Rack.concat(game.turnStartSnapshot.p2Rack).map(t => t.id));
+                const currentRackIds = new Set(currentPlayer.rack.map(t => t.id));
+
+                // 턴 시작 시 패에 있었는데, 완료 시점에 패에서 사라진 타일들 추출
+                const turnStartedPlayerRack = game.currentTurn === 'p1' ? game.turnStartSnapshot.p1Rack : game.turnStartSnapshot.p2Rack;
+                const tilesPlayedThisTurn = turnStartedPlayerRack.filter(t => !currentRackIds.has(t.id));
+
+                // 혹시 기존 보드 판을 건드려 재배치했는지 감시
+                // 미등록 상태에서는 타인의 보드 위에 놓인 것에 터치할 수 없습니다. 오직 자기 패로만 독립적인 30 이상 세트 구성 필요!
+                const touchedExistingBoard = checkTouchedExistingBoard(originalBoard, currentBoard, tilesPlayedThisTurn);
+                if (touchedExistingBoard) {
+                    showAlert("등록 전에는 보드 위의 기존 타일을 움직일 수 없습니다! 오직 본인 패에서만 타일 세트를 구성해 등록해 주세요.");
+                    return;
+                }
+
+                // 등록 세트들의 총 합산 가치 계산
+                const totalMeldValue = calculatePlayedSetsValue(activeSets, tilesPlayedThisTurn);
+
+                if (totalMeldValue < 30) {
+                    showAlert(`등록 실패! 첫 등록 타일들의 숫자 총합이 30 이상이어야 합니다. 현재 합계: ${totalMeldValue}`);
+                    return;
+                }
+
+                // 등록 성공 승인!
+                currentPlayer.hasMeld = true;
+            }
+
+            // 모든 검증 통과 - 승리 조건 체크
+            if (currentPlayer.rack.length === 0) {
+                triggerGameOver(currentPlayer.name);
+                return;
+            }
+
+            // 정상적으로 다음 턴 이동
+            switchTurn();
+        }
+
+        // 미등록 상태 플레이어가 기존 보드 위의 타일을 가져가 썼는지 체크
+        function checkTouchedExistingBoard(originalBoard, currentBoard, tilesPlayedThisTurn) {
+            // 이번 턴에 낸 타일의 아이디들
+            const myNewTileIds = new Set(tilesPlayedThisTurn.map(t => t.id));
+
+            // 현재 보드의 모든 세트에서 내가 낸 신규 타일을 뺀 나머지 타일들 중,
+            // 원래 기존 보드에 없던 타일이 있거나 기존 세트 배치가 깨진 경우 검출
+            const originalTileIds = new Set();
+            originalBoard.forEach(set => set.forEach(t => originalTileIds.add(t.id)));
+
+            for (let set of currentBoard) {
+                for (let tile of set) {
+                    // 내가 낸 타일도 아니고, 원래 보드에 있던 타일도 아니거나
+                    // 기존 보드 타일이 들어있는 세트가 해체되었는지를 감지
+                    if (!myNewTileIds.has(tile.id) && !originalTileIds.has(tile.id)) {
+                        return true; 
+                    }
+                }
+            }
+
+            // 기존 보드의 전체 타일 셋 개수 대칭 비교
+            let origCount = 0;
+            originalBoard.forEach(s => origCount += s.length);
+            
+            let curExistingCount = 0;
+            currentBoard.forEach(s => {
+                s.forEach(t => {
+                    if (!myNewTileIds.has(t.id)) curExistingCount++;
+                });
+            });
+
+            if (origCount !== curExistingCount) {
+                return true; // 보드 상의 기존 카드가 마음대로 증발/회수됨
+            }
+
+            return false;
+        }
+
+        // 등록 가치 합산 도출 (조커가 끼어있을 경우 실질 매핑 숫자 역치 파싱)
+        function calculatePlayedSetsValue(activeSets, tilesPlayedThisTurn) {
+            let totalValue = 0;
+            const newTileIds = new Set(tilesPlayedThisTurn.map(t => t.id));
+
+            activeSets.forEach(set => {
+                // 이 세트에 내가 낸 신규 카드가 포함되어 있는가?
+                const hasMyNewTile = set.some(t => newTileIds.has(t.id));
+                if (hasMyNewTile) {
+                    // 해당 세트에 대한 가상 조커 숫자 환산 후 세트 가치 산출
+                    totalValue += getSetSumValue(set);
+                }
+            });
+
+            return totalValue;
+        }
+
+        // 10. 세트 합계 구하기 (조커 숫자 정밀 디코딩 포함)
+        function getSetSumValue(set) {
+            // 조커가 없는 경우 심플 합계
+            if (!set.some(t => t.type === 'joker')) {
+                return set.reduce((sum, t) => sum + t.value, 0);
+            }
+
+            // 조커 포함 세트일 경우, 그룹인지 런인지 판정하여 조커의 숫자 유추
+            if (validateGroup(set)) {
+                // 그룹의 경우 비조커 타일의 숫자가 곧 전체 세트의 개별 숫자임
+                const nonJoker = set.find(t => t.type !== 'joker');
+                if (nonJoker) {
+                    return nonJoker.value * set.length;
+                }
+            }
+
+            // 런(Run) 일 경우 조커 보간 숫자 추적
+            // 런은 정렬을 시켜야 추적 가능
+            const resolvedValues = resolveJokersInRun(set);
+            if (resolvedValues) {
+                return resolvedValues.reduce((sum, v) => sum + v, 0);
+            }
+
+            return 0; // 예외 무효
+        }
+
+        // [세부 검증 1] 그룹(Group): 동일 숫자, 서로 다른 색상
+        function validateGroup(set) {
+            // 그룹은 3장 또는 최대 4장까지만 가능
+            if (set.length < 3 || set.length > 4) return false;
+
+            const nonJokers = set.filter(t => t.type !== 'joker');
+            if (nonJokers.length === 0) return true; // 올조커는 패스
+
+            // 1. 모든 비조커 카드의 숫자가 일치해야 함
+            const targetValue = nonJokers[0].value;
+            const isAllSameValue = nonJokers.every(t => t.value === targetValue);
+            if (!isAllSameValue) return false;
+
+            // 2. 색상이 중복되면 안 됨
+            const colors = nonJokers.map(t => t.color);
+            const uniqueColors = new Set(colors);
+            if (colors.length !== uniqueColors.size) return false;
+
+            return true;
+        }
+
+        // [세부 검증 2] 런(Run): 동일 색상, 오름차순 연속 숫자
+        function validateRun(set) {
+            const nonJokers = set.filter(t => t.type !== 'joker');
+            if (nonJokers.length === 0) return true;
+
+            // 1. 모든 비조커 카드의 색상이 통일되어야 함
+            const targetColor = nonJokers[0].color;
+            const isAllSameColor = nonJokers.every(t => t.color === targetColor);
+            if (!isAllSameColor) return false;
+
+            // 2. 조커를 숫자로 보간해 가며 연속 런 성립 여부 규명
+            const resolved = resolveJokersInRun(set);
+            return resolved !== null;
+        }
+
+        // 조커 치환 백트래킹 탐색 알고리즘
+        function resolveJokersInRun(set) {
+            const size = set.length;
+            const nonJokers = set.filter(t => t.type !== 'joker').sort((a, b) => a.value - b.value);
+            const jokerCount = size - nonJokers.length;
+
+            if (nonJokers.length === 0) {
+                // 조커로만 이뤄진 가상의 세트 (실제 게임에선 불가하지만 더미 패스용)
+                return Array.from({length: size}, (_, i) => i + 1);
+            }
+
+            // 비조커 카드들의 숫자 오름차순 중복 체크
+            const values = nonJokers.map(t => t.value);
+            const uniqueValues = [...new Set(values)];
+            if (values.length !== uniqueValues.length) return null; // 숫자가 겹치면 연속 런 불가
+
+            // 비조커 첫값과 끝값의 스팬 확인
+            const minVal = values[0];
+            const maxVal = values[values.length - 1];
+            const span = maxVal - minVal + 1;
+
+            // 비조커 사이에 필요한 갭(빈 칸) 개수 계산
+            let gapsNeeded = 0;
+            for (let i = 0; i < values.length - 1; i++) {
+                gapsNeeded += (values[i + 1] - values[i] - 1);
+            }
+
+            // 가지고 있는 조커 개수로 빈 칸을 다 채울 수 없는 경우 실패
+            if (gapsNeeded > jokerCount) return null;
+
+            // 남는 조커는 왼쪽이나 오른쪽 끝에 이어 붙여 확장 가능
+            const extraJokers = jokerCount - gapsNeeded;
+
+            // 연속된 숫자 어레이 가상 생성 시험
+            // 조커를 왼쪽으로 최대한 보냈을 때 최솟값이 1 미만으로 내려가는지 등 검증
+            let startVal = minVal - extraJokers;
+            if (startVal < 1) {
+                // 1 미만으로 내려가면 오른쪽 끝에 조커를 붙임
+                startVal = 1;
+            }
+
+            const finalSequence = [];
+            for (let i = 0; i < size; i++) {
+                const curVal = startVal + i;
+                if (curVal > 13) return null; // 에이스를 초과하는 숫자는 불가
+                finalSequence.push(curVal);
+            }
+
+            // 검증 완료 시퀀스 보간 배열 반환
+            return finalSequence;
+        }
+
+        // 11. 승리 모달 표출 및 엔드게임
+        function triggerGameOver(winnerName) {
+            document.getElementById('winner-name-display').innerText = `${winnerName} 승리! 🎉`;
+            
+            const loserKey = (game.currentTurn === 'p1') ? 'p2' : 'p1';
+            const loser = game.players[loserKey];
+            document.getElementById('loser-tiles-left').innerText = `${loser.rack.length}장 남음`;
+
+            document.getElementById('gameover-modal').classList.remove('hidden');
+        }
+
+        // 경고 알림 UI 제어
+        function showAlert(msg) {
+            const alertBox = document.getElementById('alert-box');
+            document.getElementById('alert-message').innerText = msg;
+            alertBox.classList.remove('hidden');
+            alertBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+
+        function closeAlert() {
+            document.getElementById('alert-box').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
